@@ -1,0 +1,236 @@
+name: Dependabot PR Labeler
+
+on:
+  # 自動: dependabotがPRを作成したとき
+  pull_request:
+    types: [opened]
+
+  # 手動: PR番号を指定して実行
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: '分類するPR番号'
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    # pull_requestイベントの場合はdependabotのPRのみ実行
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get PR number
+        id: pr
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "number=${{ github.event.inputs.pr_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get PR details
+        id: pr_details
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+
+          # PR情報を取得
+          PR_JSON=$(gh pr view "$PR_NUMBER" --json title,body,author,labels,files)
+
+          # 各フィールドを抽出
+          PR_TITLE=$(echo "$PR_JSON" | jq -r '.title')
+          # PR本文から<details>タグを削除してトークン数を削減
+          PR_BODY=$(echo "$PR_JSON" | jq -r '.body // ""' | sed '/<details>/,/<\/details>/d' | head -c 2000)
+          PR_AUTHOR=$(echo "$PR_JSON" | jq -r '.author.login')
+          PR_FILES=$(echo "$PR_JSON" | jq -r '.files[].path' | head -20)
+
+          # 出力
+          echo "title=$PR_TITLE" >> $GITHUB_OUTPUT
+          echo "author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+
+          # 複数行の場合はEOFを使用
+          {
+            echo "body<<EOF"
+            echo "$PR_BODY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+          {
+            echo "files<<EOF"
+            echo "$PR_FILES"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Read prompt template
+        id: prompt
+        run: |
+          PROMPT=$(cat .github/prompts/dependabot-labeler.md)
+          {
+            echo "template<<EOF"
+            echo "$PROMPT"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Analyze PR with OpenAI
+        id: analyze
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PR_TITLE: ${{ steps.pr_details.outputs.title }}
+          PR_AUTHOR: ${{ steps.pr_details.outputs.author }}
+          PR_FILES: ${{ steps.pr_details.outputs.files }}
+          PR_BODY: ${{ steps.pr_details.outputs.body }}
+          PROMPT_TEMPLATE: ${{ steps.prompt.outputs.template }}
+        run: |
+          # PRの情報を整形（環境変数から読み取り）
+          PR_INFO="## PR Title
+          $PR_TITLE
+
+          ## PR Author
+          $PR_AUTHOR
+
+          ## Changed Files
+          $PR_FILES
+
+          ## PR Body
+          $PR_BODY"
+
+          # プロンプトとPR情報を結合
+          FULL_PROMPT="$PROMPT_TEMPLATE
+
+          ---
+
+          # 分析対象のPR情報
+
+          $PR_INFO"
+
+          # OpenAI APIを呼び出し
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            -d "$(jq -n \
+              --arg prompt "$FULL_PROMPT" \
+              '{
+                "model": "gpt-4o-mini-search-preview",
+                "web_search_options": {},
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": $prompt
+                  }
+                ]
+              }')")
+
+          # レスポンスからcontentを抽出
+          CONTENT=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty')
+
+          if [ -z "$CONTENT" ]; then
+            echo "Error: Failed to get response from OpenAI API"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
+
+          echo "OpenAI Response:"
+          echo "$CONTENT"
+
+          # JSONを抽出（```json ... ``` で囲まれている場合に対応）
+          JSON_RESULT=$(echo "$CONTENT" | sed -n '/^```json/,/^```$/p' | sed '1d;$d')
+
+          # 囲まれていない場合はそのまま使用
+          if [ -z "$JSON_RESULT" ]; then
+            JSON_RESULT="$CONTENT"
+          fi
+
+          # 結果を出力
+          PRIORITY=$(echo "$JSON_RESULT" | jq -r '.priority // "medium"')
+          EFFORT=$(echo "$JSON_RESULT" | jq -r '.effort // "medium"')
+          REASON=$(echo "$JSON_RESULT" | jq -r '.reason // ""')
+
+          echo "priority=$PRIORITY" >> $GITHUB_OUTPUT
+          echo "effort=$EFFORT" >> $GITHUB_OUTPUT
+          {
+            echo "reason<<EOF"
+            echo "$REASON"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Apply labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PRIORITY: ${{ steps.analyze.outputs.priority }}
+          EFFORT: ${{ steps.analyze.outputs.effort }}
+        run: |
+          # ラベルの色定義
+          declare -A PRIORITY_COLORS=(
+            ["critical"]="d73a4a"
+            ["high"]="e99695"
+            ["medium"]="fbca04"
+            ["low"]="0e8a16"
+          )
+          declare -A EFFORT_COLORS=(
+            ["large"]="5319e7"
+            ["medium"]="1d76db"
+            ["small"]="c5def5"
+          )
+
+          # ラベルが存在しない場合は作成
+          PRIORITY_LABEL="priority:$PRIORITY"
+          EFFORT_LABEL="effort:$EFFORT"
+
+          if ! gh label list --json name -q '.[].name' | grep -q "^${PRIORITY_LABEL}$"; then
+            echo "Creating label: $PRIORITY_LABEL"
+            gh label create "$PRIORITY_LABEL" --color "${PRIORITY_COLORS[$PRIORITY]:-fbca04}" --description "Priority: $PRIORITY" || true
+          fi
+
+          if ! gh label list --json name -q '.[].name' | grep -q "^${EFFORT_LABEL}$"; then
+            echo "Creating label: $EFFORT_LABEL"
+            gh label create "$EFFORT_LABEL" --color "${EFFORT_COLORS[$EFFORT]:-1d76db}" --description "Effort: $EFFORT" || true
+          fi
+
+          # 既存のpriority/effortラベルを削除
+          EXISTING_LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name')
+          for label in $EXISTING_LABELS; do
+            if [[ "$label" == priority:* ]] || [[ "$label" == effort:* ]]; then
+              gh pr edit "$PR_NUMBER" --remove-label "$label" || true
+            fi
+          done
+
+          # 新しいラベルを追加
+          gh pr edit "$PR_NUMBER" --add-label "$PRIORITY_LABEL"
+          gh pr edit "$PR_NUMBER" --add-label "$EFFORT_LABEL"
+
+          echo "Applied labels: $PRIORITY_LABEL, $EFFORT_LABEL"
+
+      - name: Add comment with analysis
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PRIORITY: ${{ steps.analyze.outputs.priority }}
+          EFFORT: ${{ steps.analyze.outputs.effort }}
+          REASON: ${{ steps.analyze.outputs.reason }}
+        run: |
+          COMMENT="## Dependabot PR Analysis
+
+          | Category | Label |
+          |----------|-------|
+          | Priority | \`$PRIORITY\` |
+          | Effort | \`$EFFORT\` |
+
+          ### Reason
+          $REASON
+
+          ---
+          *This analysis was generated by OpenAI API*"
+
+          gh pr comment "$PR_NUMBER" --body "$COMMENT"
