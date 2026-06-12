@@ -2,20 +2,33 @@
 
 「Sanshin Edge Vision」フロントエンド。AWS SAM を用いて Lambda（コンテナイメージ）としてデプロイします。
 
+> 本書の記載内容は 2026-06-12 時点のものです。
+
 ## 必要なツール
 
 OS は問いません（Mac / Windows / Linux）。以下を事前に用意してください。
 
-- Node.js 20
+- Node.js 24（2026-06-12 時点で Node.js 24 でのビルドを確認済み）
 - Docker（起動中の Docker エンジン）
   - Mac: Docker Desktop または colima
   - Windows: Docker Desktop（WSL2 バックエンド）
 - AWS CLI（`aws configure` 等で認証情報を設定済みであること）
 - AWS SAM CLI
 
+## 設定ファイル（別途配布）
+
+以下のファイルは機密情報を含むためリポジトリには含まれていません。**別途個別に配布**しますので、受領後にプロジェクトのルートディレクトリに配置してください。
+
+| ファイル | 用途 | 必要な場面 |
+|---|---|---|
+| `samconfig.toml` | `sam deploy` の設定（スタック名・リージョン・`dev` / `dev-alfa` 等のプロファイル） | デプロイ時に必須 |
+| `.env.local` | 環境変数（Supabase URL / キー等） | ローカル開発（`npm run dev`）時に必須 |
+
+> 配置しない場合、`sam deploy --config-env dev` は該当プロファイルが見つからずエラーになります。
+
 ## デプロイ手順（OS 共通）
 
-Docker を起動した状態で、以下を実行します。
+Docker を起動し、上記の `samconfig.toml` を配置した状態で、以下を実行します。
 
 ```bash
 npm install
