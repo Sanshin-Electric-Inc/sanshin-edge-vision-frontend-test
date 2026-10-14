@@ -110,6 +110,12 @@ export function DashboardSidebar({ userProfile }: DashboardSidebarProps) {
           icon: <div className="w-2 h-2 bg-current rounded-full" />,
           permissions: [1],
         },
+        {
+          name: '一括インポート',
+          href: '/dashboard/sensors/definitions/import',
+          icon: <div className="w-2 h-2 bg-current rounded-full" />,
+          permissions: [1],
+        },
       ],
     },
     {
@@ -148,6 +154,12 @@ export function DashboardSidebar({ userProfile }: DashboardSidebarProps) {
         {
           name: 'カメラ設定',
           href: '/dashboard/cameras/settings',
+          icon: <div className="w-2 h-2 bg-current rounded-full" />,
+          permissions: [1],
+        },
+        {
+          name: '一括インポート',
+          href: '/dashboard/cameras/settings/import',
           icon: <div className="w-2 h-2 bg-current rounded-full" />,
           permissions: [1],
         },
