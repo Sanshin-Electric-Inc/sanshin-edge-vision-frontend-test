@@ -71,10 +71,21 @@ export default function CameraDefinitionImportPage() {
 
       <div className="bg-white rounded-lg shadow-sm border p-4">
         <h2 className="text-sm font-medium text-gray-700 mb-2">CSVフォーマット</h2>
-        <p className="text-sm text-gray-600 mb-2">1行目はヘッダー行として読み飛ばされます。列の順序は以下の通りです（descriptionは省略可）。</p>
+        <p className="text-sm text-gray-600 mb-2">1行目はヘッダー行として読み飛ばされます。列の順序は以下の通りです（description・is_activeは省略可）。</p>
         <code className="block bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-800">
-          area, spot, camera_code, name, description
+          area, spot, camera_code, name, description, is_active
         </code>
+        <p className="text-sm text-gray-600 mt-3 mb-2">記入例</p>
+        <pre className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-800 overflow-x-auto">
+{`area,spot,camera_code,name,description,is_active
+1,1,cam-01,北側カメラ,水門付近を撮影,true
+1,2,cam-02,南側カメラ,,
+1,3,cam-03,予備カメラ,点検中,false`}
+        </pre>
+        <ul className="text-xs text-gray-500 mt-2 space-y-1 list-disc list-inside">
+          <li>is_active は true / false / 1 / 0 のいずれか（空欄の場合は true）</li>
+          <li>カンマの後にスペースを入れないでください。文字コードは UTF-8 で保存してください</li>
+        </ul>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border p-4 space-y-4">

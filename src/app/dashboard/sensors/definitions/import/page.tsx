@@ -71,11 +71,22 @@ export default function SensorCodeDefinitionImportPage() {
 
       <div className="bg-white rounded-lg shadow-sm border p-4">
         <h2 className="text-sm font-medium text-gray-700 mb-2">CSVフォーマット</h2>
-        <p className="text-sm text-gray-600 mb-2">1行目はヘッダー行として読み飛ばされます。列の順序は以下の通りです（unitは省略可）。</p>
+        <p className="text-sm text-gray-600 mb-2">1行目はヘッダー行として読み飛ばされます。列の順序は以下の通りです（unit・description・is_activeは省略可）。</p>
         <code className="block bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-800">
-          area, spot, sensor_code, name, data_type, unit
+          area, spot, sensor_code, name, data_type, unit, description, is_active
         </code>
-        <p className="text-xs text-gray-500 mt-2">data_type は string / int / float / boolean のいずれか</p>
+        <p className="text-sm text-gray-600 mt-3 mb-2">記入例</p>
+        <pre className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-800 overflow-x-auto">
+{`area,spot,sensor_code,name,data_type,unit,description,is_active
+1,1,water_level,水位,float,cm,水位計の測定値,true
+1,1,temperature,水温,float,℃,,
+1,2,door_open,扉開閉,boolean,,,false`}
+        </pre>
+        <ul className="text-xs text-gray-500 mt-2 space-y-1 list-disc list-inside">
+          <li>data_type は string / int / float / boolean のいずれか</li>
+          <li>is_active は true / false / 1 / 0 のいずれか（空欄の場合は true）</li>
+          <li>カンマの後にスペースを入れないでください。文字コードは UTF-8 で保存してください</li>
+        </ul>
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-sm border p-4 space-y-4">
